@@ -47,10 +47,10 @@ do
         do 
             echo "Processing Jira ticket : $jiraId"
             jiraComment=$(git show -s --format=medium $sha1Commit)
-            echo $jiraComment
-            echo
+            # Uncomment the echo to debug
+	    # echo $jiraComment
             # All jira server errors will be ignored
-            # curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": $jiraComment}" -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl > /dev/null 2>&1
+            curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": $jiraComment}" -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl > /dev/null 2>&1
             echo "New Jira comment added"
             echo
         done
