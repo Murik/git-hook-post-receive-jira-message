@@ -1,0 +1,61 @@
+#!/bin/bash
+#
+# post-receive hook
+#
+# Add comments in the jira tickets using jira API.
+# When the git push is received, every commit adds a comment depending on the jira tickets found in the commit message.
+# The jira comment contains :
+# - SHA1 commit
+# - Commit author
+# - Commit date
+# - Commit message
+#
+# This file must be named post-receive, and be saved in the hook directory in a bare git repository.
+# Run "chmod +x post-receive" to make it executable.
+#
+# Don't forget to change the jira server url, jira id regex, login and password
+#
+# GitHub: https://github.com/FabreFrederic/git-hook-post-receive-jira-message
+# 
+echo
+echo "post-receive git hook"
+echo
+
+jiraBeginUrl="http://jira.yourserver.com/rest/api/2/issue"
+jiraEndUrl="comment"
+jiraIdRegex="[a-zA-Z]{3}-[0-9]{1,6}"
+
+# Jira credentials
+jiraLogin="login@server.com"
+jiraPassword="password"
+
+# Branches loop
+# because it is possible to push more than one branch at a time with the "git push --all" command
+while read oldrev newrev refname
+do
+    echo "Processing branch : $refname"
+    echo "--------------------------------------------------------"
+    echo
+    
+    # Commits loop
+    for sha1Commit in $(git rev-list --reverse $oldrev..$newrev)
+    do
+        gitComment=$(git cat-file commit $sha1Commit | sed '1,/^$/d')
+        jiraIds=$(echo $gitComment | grep -Po $jiraIdRegex)
+
+        for jiraId in ${jiraIds[@]}
+        do 
+            echo "Processing Jira ticket : $jiraId"
+            jiraComment=$(git show -s --format=medium $sha1Commit)
+            echo $jiraComment
+            echo
+            # All jira server errors will be ignored
+            # curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": $jiraComment}" -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl > /dev/null 2>&1
+            echo "New Jira comment added"
+            echo
+        done
+    done
+done
+
+echo
+echo "post-receive git hook : see you soon"
