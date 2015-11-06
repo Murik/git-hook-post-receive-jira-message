@@ -2,6 +2,7 @@
 
 This hook adds comments in the jira tickets using jira API.
 When the git push is received, every commit adds a comment depending on the jira tickets found in the commit message.
+
 The jira comment contains :
 - SHA1 commit
 - Commit author
