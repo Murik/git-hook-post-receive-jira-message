@@ -13,7 +13,7 @@
 # This file must be named post-receive, and be saved in the hook directory in a bare git repository.
 # Run "chmod +x post-receive" to make it executable.
 #
-# Don't forget to change the jira server url, jira id regex, login and password
+# Don't forget to change the jira server url, jira id regex, login and password, and git service url
 #
 # GitHub: https://github.com/FabreFrederic/git-hook-post-receive-jira-message
 # 
@@ -29,29 +29,65 @@ jiraIdRegex="[a-zA-Z]{3}-[0-9]{1,6}"
 jiraLogin="login@server.com"
 jiraPassword="password"
 
-# Branches loop
+# Your Git service url like github, gogs, ...
+# You have to put "/" at the end
+gitServiceUrl="http://gitservice.com/myrepository/commit/"
+
+# Branchs loop
 # because it is possible to push more than one branch at a time with the "git push --all" command
 while read oldrev newrev refname
 do
     echo "Processing branch : $refname"
     echo "--------------------------------------------------------"
-    echo
-    
+
     # Commits loop
     for sha1Commit in $(git rev-list --reverse $oldrev..$newrev)
     do
+        # The comment is the text after the first blank line
         gitComment=$(git cat-file commit $sha1Commit | sed '1,/^$/d')
         jiraIds=$(echo $gitComment | grep -Po $jiraIdRegex)
 
+        # Jira tickets loop
         for jiraId in ${jiraIds[@]}
         do 
             echo "Processing Jira ticket : $jiraId"
             jiraComment=$(git show -s --format=medium $sha1Commit)
-            # Uncomment the echo to debug
-	    # echo $jiraComment
-            # All jira server errors will be ignored
-            curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": $jiraComment}" -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl > /dev/null 2>&1
-            echo "New Jira comment added"
+	    
+            # Add git branch name
+            jiraComment="Git branch : $refname\n$jiraComment"
+            
+	    # Add git comment on a new line
+	    jiraComment=$(echo $jiraComment | sed "s/$gitComment//g")
+            jiraComment="$jiraComment\n\n$gitComment"
+
+            # Escaping characters
+            jiraComment=$(echo $jiraComment | sed 's/\n/\\n/g')
+            jiraComment=$(echo $jiraComment | sed 's/\b//g')
+            jiraComment=$(echo $jiraComment | sed 's/\r/\\r/g')
+	    jiraComment=$(echo $jiraComment | sed 's/\t/\\t/g')
+            jiraComment=$(echo $jiraComment | sed 's/"/\"/g')
+            jiraComment=$(echo $jiraComment | sed "s/'/\\'/g")
+            
+            # Author and date on a new line
+            jiraComment=$(echo $jiraComment | sed 's/Author:/\\nAuthor:/g')
+            jiraComment=$(echo $jiraComment | sed 's/Date:/\\nDate:/g')
+
+	    # Add git service url link
+            gitServiceUrl=$gitServiceUrl$sha1Commit
+            jiraComment=$jiraComment\\n\\n$gitServiceUrl
+                       
+	    # Uncomment to debug
+            #echo "debug begin"
+	    #echo $jiraComment
+	    #echo
+	    #echo $jiraBeginUrl+"/"+$jiraId+"/"+$jiraEndUrl
+            #echo
+	    #curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": \"test post-receive git hook\"}" -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl
+	    #echo "debug end"
+		
+	    # All errors will be ignored
+            curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": \"$jiraComment\"}" -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl > /dev/null 2>&1
+            echo "New message added in the Jira ticket"
             echo
         done
     done
@@ -59,3 +95,4 @@ done
 
 echo
 echo "post-receive git hook : see you soon"
+exit 0
