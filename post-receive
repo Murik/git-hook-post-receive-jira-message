@@ -2,98 +2,136 @@
 #
 # post-receive hook
 #
-# Add comments in the jira tickets using jira API.
-# When the git push is received, every commit adds a comment depending on the jira tickets found in the commit message.
-# The jira comment contains :
+# Add comments in the Jira tickets using Jira API.
+# When the git push is received, every commit adds a comment depending on the Jira tickets found in the commit message.
+# The Jira comment contains :
 # - SHA1 commit
 # - Commit author
 # - Commit date
 # - Commit message
-# - Your git service url 
+# - Your git service url
 #
 # This file must be named post-receive, and be saved in the hook directory in a bare git repository.
 # Run "chmod +x post-receive" to make it executable.
 #
-# Don't forget to change the jira server url, jira id regex, login and password, and git service url
+# Don't forget to change the Jira server url, Jira id regex, login and password, and git service url
 #
 # GitHub: https://github.com/FabreFrederic/git-hook-post-receive-jira-message
-# 
+#
 echo
+echo "--------------------------------------------------------"
 echo "post-receive git hook"
-echo
+echo "--------------------------------------------------------"
 
 jiraBeginUrl="http://jira.yourserver.com/rest/api/2/issue"
 jiraEndUrl="comment"
 jiraIdRegex="[a-zA-Z]{3}-[0-9]{1,6}"
 
 # Jira credentials
-jiraLogin="login@server.com"
+jiraLogin="login"
 jiraPassword="password"
 
 # Your Git service url like github, gogs, ...
-# You have to put "/" at the end
-gitServiceUrl="http://gitservice.com/myrepository/commit/"
+# Don't forget to put "/" at the end of this url
+gitServiceRootUrl="http://gitservice.com/myrepository/commit/"
 
-# Branchs loop
+# Branches loop
 # because it is possible to push more than one branch at a time with the "git push --all" command
 while read oldrev newrev refname
 do
-    echo "Processing branch : $refname"
+    echo
     echo "--------------------------------------------------------"
+    echo "Processing branch : $refname"
 
-    # Commits loop
-    for sha1Commit in $(git rev-list --reverse $oldrev..$newrev)
-    do
-        # The comment is the text after the first blank line
-        gitComment=$(git cat-file commit $sha1Commit | sed '1,/^$/d')
-        jiraIds=$(echo $gitComment | grep -Po $jiraIdRegex)
+    #
+    deletedBranch=false
 
-        # Jira tickets loop
-        for jiraId in ${jiraIds[@]}
-        do 
-            echo "Processing Jira ticket : $jiraId"
-            jiraComment=$(git show -s --format=medium $sha1Commit)
-	    
-            # Add git branch name
-            jiraComment="Git branch : $refname\n$jiraComment"
-            
-	    # Add git comment on a new line
-	    jiraComment=$(echo $jiraComment | sed "s/$gitComment//g")
-            jiraComment="$jiraComment\n\n$gitComment"
+    # --- Interpret
+    # 0000->1234 (create)
+    # 1234->2345 (update)
+    # 2345->0000 (delete)
+    if expr "$oldrev" : '0*$' >/dev/null
+    then
+      # Show all revisions exclusive to this new branch.
+      echo >&2 "You have been working on a new branch"
+      echo "--------------------------------------------------------"
+      revisions=$newrev
+    else
+	    if expr "$newrev" : '0*$' >/dev/null
+	    then
+        echo >&2 "This branch has been deleted, no need to post a Jira comment"
+        echo "--------------------------------------------------------"
+  	    revisions=""
+        deletedBranch=true
+	    else
+        # Branch update, show revisions not part of $oldrev.
+        echo >&2 "The branch has been updated"
+        echo "--------------------------------------------------------"
+        revisions=$oldrev..$newrev
+	    fi
+    fi
 
-            # Escaping characters
-            jiraComment=$(echo $jiraComment | sed 's/\n/\\n/g')
-            jiraComment=$(echo $jiraComment | sed 's/\b//g')
-            jiraComment=$(echo $jiraComment | sed 's/\r/\\r/g')
-	    jiraComment=$(echo $jiraComment | sed 's/\t/\\t/g')
-            jiraComment=$(echo $jiraComment | sed 's/"/\"/g')
-            jiraComment=$(echo $jiraComment | sed "s/'/\\'/g")
-            
-            # Author and date on a new line
-            jiraComment=$(echo $jiraComment | sed 's/Author:/\\nAuthor:/g')
-            jiraComment=$(echo $jiraComment | sed 's/Date:/\\nDate:/g')
+    # TODO : use function, not "if" condition
+    if [ "$deletedBranch" = false ] ; then
+      # We exclude commits which are already in others branches to avoid to retrieve these commits again while merging
+      otherBranches=$(git for-each-ref --format='%(refname)' refs/heads/ | grep -F -v $refname)
 
-	    # Add git service url link
-            gitServiceUrl=$gitServiceUrl$sha1Commit
-            jiraComment=$jiraComment\\n\\n$gitServiceUrl
-                       
-	    # Uncomment to debug
-            #echo "debug begin"
-	    #echo $jiraComment
-	    #echo
-	    #echo $jiraBeginUrl+"/"+$jiraId+"/"+$jiraEndUrl
+      # Commits loop in chronological order
+      # We exclude commits merge
+      for sha1Commit in $(git rev-parse --not $otherBranches | git rev-list --reverse --no-merges --stdin $revisions)
+      do
+          echo
+          echo "sha1 : $sha1Commit"
+
+          # Get the commit information
+          commitAuthorName=$(git show -s --format=%an)
+          commitAuthorEmail=$(git show -s --format=%ae)
+          commitDate=$(git show -s --format=%ci $sha1Commit)
+          # The commit message is the text after the first blank line
+          commitMessage=$(git cat-file commit $sha1Commit | sed '1,/^$/d')
+
+          # Jira comment build
+          jiraComment="git branch name : $refname"
+          jiraComment="$jiraComment\nCommit : $sha1Commit"
+          jiraComment="$jiraComment\nAuthor : $commitAuthorName - $commitAuthorEmail"
+          jiraComment="$jiraComment\nDate : $commitDate"
+          jiraComment="$jiraComment\n\n$commitMessage"
+          jiraComment="$jiraComment\n\n$gitServiceRootUrl$sha1Commit"
+
+          # Escaping characters
+          jiraComment=$(echo $jiraComment | sed 's/\n/\\n/g')
+          jiraComment=$(echo $jiraComment | sed 's/\b//g')
+          jiraComment=$(echo $jiraComment | sed 's/\r/\\r/g')
+          jiraComment=$(echo $jiraComment | sed 's/\t/\\t/g')
+          jiraComment=$(echo $jiraComment | sed 's/"/\"/g')
+          jiraComment=$(echo $jiraComment | sed "s/'/\\'/g")
+
+          jiraIds=$(echo $commitMessage | grep -Po $jiraIdRegex)
+
+          # Jira tickets loop
+          for jiraId in ${jiraIds[@]}
+          do
+            echo "Processing Jira : $jiraId"
+
+  	        # Uncomment to debug
+            #echo "debug begin comment :"
             #echo
-	    #curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": \"test post-receive git hook\"}" -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl
-	    #echo "debug end"
-		
-	    # All errors will be ignored
+  	        #echo $jiraComment
+            #echo
+  	        #echo "debug end"
+
+  	        # All errors will be ignored (/dev/null)
             curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": \"$jiraComment\"}" -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl > /dev/null 2>&1
-            echo "New message added in the Jira ticket"
-            echo
-        done
-    done
+            echo "New Jira comment added"
+          done
+      done
+    fi
 done
 
 echo
+echo
 echo "post-receive git hook : see you soon"
+echo "--------------------------------------------------------"
+echo
+
 exit 0
