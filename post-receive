@@ -9,6 +9,7 @@
 # - Commit author
 # - Commit date
 # - Commit message
+# - Your git service url 
 #
 # This file must be named post-receive, and be saved in the hook directory in a bare git repository.
 # Run "chmod +x post-receive" to make it executable.
