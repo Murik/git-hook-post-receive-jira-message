@@ -9,12 +9,18 @@
 # - Commit author
 # - Commit date
 # - Commit message
-# - Your git service url
+# - A link to your git service website of the commit if gitServiceRootUrl is not tempty
 #
 # This file must be named post-receive, and be saved in the hook directory in a bare git repository.
 # Run "chmod +x post-receive" to make it executable.
 #
-# Don't forget to change the Jira server url, Jira id regex, login and password, and git service url
+# Don't forget to change
+# - Jira server urls
+# - Jira id regex
+# - Jira group name
+# - Jira login
+# - Jira password
+# - git service url
 #
 # GitHub: https://github.com/FabreFrederic/git-hook-post-receive-jira-message
 #
@@ -26,6 +32,7 @@ echo "--------------------------------------------------------"
 jiraBeginUrl="http://jira.yourserver.com/rest/api/2/issue"
 jiraEndUrl="comment"
 jiraIdRegex="[a-zA-Z]{3}-[0-9]{1,6}"
+jiraGroupName="developers"
 
 # Jira credentials
 jiraLogin="login"
@@ -59,7 +66,8 @@ do
     else
 	    if expr "$newrev" : '0*$' >/dev/null
 	    then
-        echo >&2 "This branch has been deleted, no need to post a Jira comment"
+        echo >&2 "This branch has been deleted,"
+        echo >&2 "no need to post a Jira comment"
         echo "--------------------------------------------------------"
   	    revisions=""
         deletedBranch=true
@@ -73,12 +81,15 @@ do
 
     # TODO : use function, not "if" condition
     if [ "$deletedBranch" = false ] ; then
-      # We exclude commits which are already in others branches to avoid to retrieve these commits again while merging
-      otherBranches=$(git for-each-ref --format='%(refname)' refs/heads/ | grep -F -v $refname)
+      # We exclude commits which are already in others branches to avoid
+      # to retrieve these commits again while merging
+      otherBranches=$(git for-each-ref --format='%(refname)' refs/heads/ | \
+        grep -F -v $refname)
 
       # Commits loop in chronological order
       # We exclude commits merge
-      for sha1Commit in $(git rev-parse --not $otherBranches | git rev-list --reverse --no-merges --stdin $revisions)
+      for sha1Commit in $(git rev-parse --not $otherBranches | \
+        git rev-list --reverse --no-merges --stdin $revisions)
       do
           echo
           echo "sha1 : $sha1Commit"
@@ -96,7 +107,10 @@ do
           jiraComment="$jiraComment\nAuthor : $commitAuthorName - $commitAuthorEmail"
           jiraComment="$jiraComment\nDate : $commitDate"
           jiraComment="$jiraComment\n\n$commitMessage"
-          jiraComment="$jiraComment\n\n$gitServiceRootUrl$sha1Commit"
+          if [ ! -z "$gitServiceRootUrl" ];
+          then
+            jiraComment="$jiraComment\n\n$gitServiceRootUrl$sha1Commit"
+          fi
 
           # Escaping characters
           jiraComment=$(echo $jiraComment | sed 's/\n/\\n/g')
@@ -121,7 +135,16 @@ do
   	        #echo "debug end"
 
   	        # All errors will be ignored (/dev/null)
-            curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": \"$jiraComment\"}" -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl > /dev/null 2>&1
+            if [ -z "$jiraGroupName" ];
+            then
+              curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": \"$jiraComment\"}" \
+                -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl > /dev/null 2>&1
+            else
+              # Jira group visibility filter
+              curl -D- -u $jiraLogin:$jiraPassword -X POST --data \
+              "{\"body\": \"$jiraComment\", \"visibility\": { \"type\": \"group\", \"value\": \"$jiraGroupName\" }}" \
+              -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl
+            fi
             echo "New Jira comment added"
           done
       done
