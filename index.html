@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="description" content="Git-hook-post-receive-jira-message : This hook adds comments in the jira tickets using jira API">
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Git-hook-post-receive-jira-message</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/FabreFrederic/git-hook-post-receive-jira-message">View on GitHub</a>
+
+          <h1 id="project_title">Git-hook-post-receive-jira-message</h1>
+          <h2 id="project_tagline">This hook adds comments in the jira tickets using jira API</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/FabreFrederic/git-hook-post-receive-jira-message/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/FabreFrederic/git-hook-post-receive-jira-message/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h1>
+<a id="post-receive-hook" class="anchor" href="#post-receive-hook" aria-hidden="true"><span class="octicon octicon-link"></span></a>post-receive hook</h1>
+
+<p>Add comments in the Jira tickets using Jira API.
+When the git push is received, every commit adds a comment depending on the Jira tickets found in the commit message.
+The Jira comment contains :</p>
+
+<ul>
+<li>SHA1 commit</li>
+<li>Commit author</li>
+<li>Commit date</li>
+<li>Commit message</li>
+<li>A link to your git service website of the commit if gitServiceRootUrl is not tempty</li>
+</ul>
+
+<p>This file must be named post-receive, and be saved in the hook directory in a bare git repository.
+Run "chmod +x post-receive" to make it executable.</p>
+
+<p>Don't forget to change</p>
+
+<ul>
+<li>Jira server urls</li>
+<li>Jira id regex</li>
+<li>Jira group name</li>
+<li>Jira login</li>
+<li>Jira password</li>
+<li>git service url</li>
+</ul>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Git-hook-post-receive-jira-message maintained by <a href="https://github.com/FabreFrederic">FabreFrederic</a></p>
+        <p>Published with <a href="https://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
