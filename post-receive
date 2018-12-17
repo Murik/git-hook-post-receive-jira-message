@@ -5,11 +5,10 @@
 # Add comments in the Jira tickets using Jira API.
 # When the git push is received, every commit adds a comment depending on the Jira tickets found in the commit message.
 # The Jira comment contains :
-# - SHA1 commit
-# - Commit author
-# - Commit date
-# - Commit message
-# - A link to your git service website of the commit if gitServiceRootUrl is not tempty
+# - Branch name : SHA1 commit
+# - Commit author : Commit date
+# - Commit describe by tags
+# - A link to your git service website of the commit if gitServiceRootUrl is not empty
 #
 # This file must be named post-receive, and be saved in the hook directory in a bare git repository.
 # Run "chmod +x post-receive" to make it executable.
@@ -17,22 +16,14 @@
 # Don't forget to change
 # - Jira server urls
 # - Jira id regex
-# - Jira group name
 # - Jira login
 # - Jira password
 # - git service url
 #
-# GitHub: https://github.com/FabreFrederic/git-hook-post-receive-jira-message
-#
-echo
-echo "--------------------------------------------------------"
-echo "post-receive git hook"
-echo "--------------------------------------------------------"
 
 jiraBeginUrl="http://jira.yourserver.com/rest/api/2/issue"
 jiraEndUrl="comment"
-jiraIdRegex="[a-zA-Z]{3}-[0-9]{1,6}"
-jiraGroupName="developers"
+jiraIdRegex="HCS(|INT|ANALYST)-[0-9]{1,8}"
 
 # Jira credentials
 jiraLogin="login"
@@ -88,8 +79,7 @@ do
 
       # Commits loop in chronological order
       # We exclude commits merge
-      for sha1Commit in $(git rev-parse --not $otherBranches | \
-        git rev-list --reverse --no-merges --stdin $revisions)
+      for sha1Commit in $(git rev-parse --not $otherBranches | git rev-list --reverse --no-merges --stdin $revisions)
       do
           echo
           echo "sha1 : $sha1Commit"
@@ -98,19 +88,19 @@ do
           commitAuthorName=$(git show -s --format=%an)
           commitAuthorEmail=$(git show -s --format=%ae)
           commitDate=$(git show -s --format=%ci $sha1Commit)
-          # The commit message is the text after the first blank line
-          commitMessage=$(git cat-file commit $sha1Commit | sed '1,/^$/d')
+          # The commit message
+          commitMessage=$(git log --format=%B -n 1 $sha1Commit)
+          buildNumber = $(git describe --tags $sha1Commit)
 
           # Jira comment build
-          jiraComment="git branch name : $refname"
-          jiraComment="$jiraComment\nCommit : $sha1Commit"
-          jiraComment="$jiraComment\nAuthor : $commitAuthorName - $commitAuthorEmail"
-          jiraComment="$jiraComment\nDate : $commitDate"
-          jiraComment="$jiraComment\n\n$commitMessage"
           if [ ! -z "$gitServiceRootUrl" ];
           then
-            jiraComment="$jiraComment\n\n$gitServiceRootUrl$sha1Commit"
+            jiraComment="$refname : $gitServiceRootUrl$sha1Commit"
+            else
+            jiraComment="$refname : $sha1Commit"
           fi
+          jiraComment="$jiraComment\n$commitAuthorName: $commitDate"
+          jiraComment="$jiraComment\n\n$buildNumber"
 
           # Escaping characters
           jiraComment=$(echo $jiraComment | sed 's/\n/\\n/g')
@@ -135,16 +125,8 @@ do
   	        #echo "debug end"
 
   	        # All errors will be ignored (/dev/null)
-            if [ -z "$jiraGroupName" ];
-            then
               curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": \"$jiraComment\"}" \
                 -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl > /dev/null 2>&1
-            else
-              # Jira group visibility filter
-              curl -D- -u $jiraLogin:$jiraPassword -X POST --data \
-              "{\"body\": \"$jiraComment\", \"visibility\": { \"type\": \"group\", \"value\": \"$jiraGroupName\" }}" \
-              -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl
-            fi
             echo "New Jira comment added"
           done
       done

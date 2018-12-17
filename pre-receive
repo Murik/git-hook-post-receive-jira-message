@@ -1,0 +1,31 @@
+#!/bin/bash
+#
+# check commit messages for JIRA issue numbers
+
+# This file must be named pre-receive, and be saved in the hook directory in a bare git repository.
+# Run "chmod +x pre-receive" to make it executable.
+#
+# Don't forget to change
+# - Jira id regex
+
+jiraIdRegex="HCS(|INT|ANALYST)-[0-9]{1,8}"
+
+error_msg="[POLICY] The commit doesn't reference a HCS JIRA issue"
+
+while read oldrev newrev refname
+do
+  for sha1Commit in $(git rev-list $oldrev..$newrev);
+  do
+    echo "sha1 : $sha1Commit";
+    commitMessage=$(git log --format=%B -n 1 $sha1Commit)
+
+
+    jiraIds=$(echo $commitMessage | grep -Pqo $jiraIdRegex)
+
+    if ! jiraIds; then
+      echo "$error_msg: $commitMessage" >&2
+      exit 1
+    fi
+  done
+done
+exit 0
