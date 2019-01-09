@@ -8,7 +8,7 @@
 # Don't forget to change
 # - Jira id regex
 
-jiraIdRegex="HCS(|INT|ANALYST)-[0-9]{1,8}"
+jiraIdRegex="HCS(|INT|ANALYST|PAFO|INFRA)-[0-9]{1,8}"
 
 error_msg="[POLICY] The commit doesn't reference a HCS JIRA issue"
 
@@ -20,9 +20,9 @@ do
     commitMessage=$(git log --format=%B -n 1 $sha1Commit)
 
 
-    jiraIds=$(echo $commitMessage | grep -Pqo $jiraIdRegex)
+    jiraIds=$(echo $commitMessage | grep -E $jiraIdRegex)
 
-    if ! jiraIds; then
+    if [! "$jiraIds"]; then
       echo "$error_msg: $commitMessage" >&2
       exit 1
     fi
