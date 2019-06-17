@@ -26,12 +26,12 @@ jiraEndUrl="comment"
 jiraIdRegex="HCS(|INT|ANALYST)-[0-9]{1,8}"
 
 # Jira credentials
-jiraLogin="login"
-jiraPassword="password"
+jiraLogin="git_user"
+jiraPassword="git_user_password"
 
 # Your Git service url like github, gogs, ...
 # Don't forget to put "/" at the end of this url
-gitServiceRootUrl="http://gitservice.com/myrepository/commit/"
+gitServiceRootUrl="http://gitlab.local/root/testproject/commit/"
 
 # Branches loop
 # because it is possible to push more than one branch at a time with the "git push --all" command
@@ -74,12 +74,11 @@ do
     if [ "$deletedBranch" = false ] ; then
       # We exclude commits which are already in others branches to avoid
       # to retrieve these commits again while merging
-      otherBranches=$(git for-each-ref --format='%(refname)' refs/heads/ | \
-        grep -F -v $refname)
+      otherBranches=$(git for-each-ref --format='%(refname)' refs/heads/ | grep -F -v $refname)
 
       # Commits loop in chronological order
-      # We exclude commits merge
-      for sha1Commit in $(git rev-parse --not $otherBranches | git rev-list --reverse --no-merges --stdin $revisions)
+      # For merge commits - find comment from all included branch commits for jiraIds search
+      for sha1Commit in $(git rev-parse --not $otherBranches | git rev-list --reverse --stdin $revisions)
       do
           echo
           echo "sha1 : $sha1Commit"
@@ -89,18 +88,32 @@ do
           commitAuthorEmail=$(git show -s --format=%ae)
           commitDate=$(git show -s --format=%ci $sha1Commit)
           # The commit message
-          commitMessage=$(git log --format=%B -n 1 $sha1Commit)
-          buildNumber = $(git describe --tags $sha1Commit)
+          commitMessage=$(git log --format=%B -n 1 $sha1Commit | sed ':a;N;$!ba;s/\n/ /g')
+          jiraIdsFromMessage=$commitMessage
+          buildNumber=$(git describe --tags $sha1Commit)
+	  #echo $sha1Commit
+
+	        parentCommitsString=$(git log --pretty=%P -n 1 $sha1Commit) #for merges commit
+	        parentCommits=($parentCommitsString)
+	        if [ ${#parentCommits[@]} -eq 2 ]
+	        then
+                echo "parentCommits: $parentCommits"
+	         for mergedCommits in $(git rev-list ${parentCommits[0]}..${parentCommits[1]})
+                do
+                jiraIdsFromMessage="$jiraIdsFromMessage $(git log --format=%B -n 1 $mergedCommits | sed ':a;N;$!ba;s/\n/ /g')"
+                done
+	        fi
 
           # Jira comment build
+          jiraComment="*branch:* $refname"
+          jiraComment="$jiraComment\n*revision:*: $buildNumber"
+          jiraComment="$jiraComment\n*commit:*: $sha1Commit"
           if [ ! -z "$gitServiceRootUrl" ];
           then
-            jiraComment="$refname : $gitServiceRootUrl$sha1Commit"
-            else
-            jiraComment="$refname : $sha1Commit"
+            jiraComment="$jiraComment\n$gitServiceRootUrl$sha1Commit"
           fi
-          jiraComment="$jiraComment\n$commitAuthorName: $commitDate"
-          jiraComment="$jiraComment\n\n$buildNumber"
+          jiraComment="$jiraComment\n*autor:* $commitAuthorName *add:* $commitDate"
+          jiraComment="$jiraComment\n\n*commitMessage:*$commitMessage"
 
           # Escaping characters
           jiraComment=$(echo $jiraComment | sed 's/\n/\\n/g')
@@ -110,7 +123,7 @@ do
           jiraComment=$(echo $jiraComment | sed 's/"/\"/g')
           jiraComment=$(echo $jiraComment | sed "s/'/\\'/g")
 
-          jiraIds=$(echo $commitMessage | grep -Po $jiraIdRegex)
+          jiraIds=$(echo $jiraIdsFromMessage | grep -Po $jiraIdRegex)
 
           # Jira tickets loop
           for jiraId in ${jiraIds[@]}
@@ -118,9 +131,13 @@ do
             echo "Processing Jira : $jiraId"
 
   	        # Uncomment to debug
-            #echo "debug begin comment :"
+            echo "debug begin comment :"
             #echo
-  	        #echo $jiraComment
+  	    echo "jiracom=$jiraComment" #>> /var/log/gitlab/post_hook.log
+	    #echo "jiraurl=$jiraBeginUrl" #>> /var/log/gitlab/post_hook.log
+	    #echo "jiraId=$jiraId" #>> /var/log/gitlab/post_hook.log
+	    #echo "jiraEndUrl=$jiraEndUrl" #>> /var/log/gitlab/post_hook.log
+	    echo "buildNumber=$buildNumber" #>> /var/log/gitlab/post_hook.log
             #echo
   	        #echo "debug end"
 

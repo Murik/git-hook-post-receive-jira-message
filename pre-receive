@@ -14,18 +14,28 @@ error_msg="[POLICY] The commit doesn't reference a HCS JIRA issue"
 
 while read oldrev newrev refname
 do
-  for sha1Commit in $(git rev-list $oldrev..$newrev);
+    if expr "$oldrev" : '0*$' >/dev/null
+    then
+    # list everything reachable from newrev but not any heads
+        revisions=$newrev
+    else
+        revisions=$oldrev..$newrev
+    fi
+
+   otherBranches=$(git for-each-ref --format='%(refname)' refs/heads/ | grep -F -v $refname)
+
+  for sha1Commit in $(git rev-parse --not $otherBranches | git rev-list --reverse --no-merges --stdin $revisions);
   do
     echo "sha1 : $sha1Commit";
     commitMessage=$(git log --format=%B -n 1 $sha1Commit)
 
-
     jiraIds=$(echo $commitMessage | grep -E $jiraIdRegex)
 
-    if [! "$jiraIds"]; then
+    if [ ! "$jiraIds" ]; then
       echo "$error_msg: $commitMessage" >&2
       exit 1
     fi
+    echo "JiraIds : $jiraIds";
   done
 done
 exit 0
