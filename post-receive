@@ -20,10 +20,11 @@
 # - Jira password
 # - git service url
 #
+#branchName="refs/heads/master"
 
 jiraBeginUrl="http://jira.yourserver.com/rest/api/2/issue"
 jiraEndUrl="comment"
-jiraIdRegex="HCS(|INT|ANALYST)-[0-9]{1,8}"
+jiraIdRegex="PFOANALYST-[0-9]{1,8}|HCS(|INT|ANALYST|PAFO|INFRA)-[0-9]{1,8}"
 
 # Jira credentials
 jiraLogin="git_user"
@@ -67,6 +68,7 @@ do
         echo >&2 "The branch has been updated"
         echo "--------------------------------------------------------"
         revisions=$oldrev..$newrev
+        echo "revisions" $revisions
 	    fi
     fi
 
@@ -78,17 +80,26 @@ do
 
       # Commits loop in chronological order
       # For merge commits - find comment from all included branch commits for jiraIds search
-      for sha1Commit in $(git rev-parse --not $otherBranches | git rev-list --reverse --stdin $revisions)
+      regex='master|\/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
+      if [[ $refname =~ $regex ]] ; then
+          sha1Commits=$(git rev-parse --not $otherBranches | git rev-list --reverse --stdin $revisions)
+          echo "master|release branch"
+      else
+          sha1Commits=$(git rev-parse --not $otherBranches | git rev-list --reverse --no-merges --stdin $revisions)
+          echo "feature branch"
+      fi
+      for sha1Commit in $sha1Commits
       do
           echo
           echo "sha1 : $sha1Commit"
 
           # Get the commit information
-          commitAuthorName=$(git show -s --format=%an)
-          commitAuthorEmail=$(git show -s --format=%ae)
+          commitAuthorName=$(git show -s --format=%an $sha1Commit)
+          commitAuthorEmail=$(git show -s --format=%ae $sha1Commit)
           commitDate=$(git show -s --format=%ci $sha1Commit)
           # The commit message
           commitMessage=$(git log --format=%B -n 1 $sha1Commit | sed ':a;N;$!ba;s/\n/ /g')
+          commitMessage=$(echo $commitMessage | sed 's:\\: :g')
           jiraIdsFromMessage=$commitMessage
           buildNumber=$(git describe --tags $sha1Commit)
 	  #echo $sha1Commit
@@ -97,7 +108,7 @@ do
 	        parentCommits=($parentCommitsString)
 	        if [ ${#parentCommits[@]} -eq 2 ]
 	        then
-                echo "parentCommits: $parentCommits"
+                echo "parentCommits: $parentCommitsString"
 	         for mergedCommits in $(git rev-list ${parentCommits[0]}..${parentCommits[1]})
                 do
                 jiraIdsFromMessage="$jiraIdsFromMessage $(git log --format=%B -n 1 $mergedCommits | sed ':a;N;$!ba;s/\n/ /g')"
@@ -105,25 +116,24 @@ do
 	        fi
 
           # Jira comment build
-          jiraComment="*branch:* $refname"
-          jiraComment="$jiraComment\n*revision:*: $buildNumber"
-          jiraComment="$jiraComment\n*commit:*: $sha1Commit"
+
           if [ ! -z "$gitServiceRootUrl" ];
           then
-            jiraComment="$jiraComment\n$gitServiceRootUrl$sha1Commit"
+            jiraComment="*branch:* $refname\n*revision:* $buildNumber\n*commit:* $sha1Commit\n$gitServiceRootUrl$sha1Commit"
+                        else
+            jiraComment="$refname : $sha1Commit"
           fi
-          jiraComment="$jiraComment\n*autor:* $commitAuthorName *add:* $commitDate"
-          jiraComment="$jiraComment\n\n*commitMessage:*$commitMessage"
+          jiraComment="$jiraComment\n*autor:* $commitAuthorName *add:* $commitDate\n\n*commitMessage:* $commitMessage"
 
           # Escaping characters
           jiraComment=$(echo $jiraComment | sed 's/\n/\\n/g')
           jiraComment=$(echo $jiraComment | sed 's/\b//g')
           jiraComment=$(echo $jiraComment | sed 's/\r/\\r/g')
           jiraComment=$(echo $jiraComment | sed 's/\t/\\t/g')
-          jiraComment=$(echo $jiraComment | sed 's/"/\"/g')
+          jiraComment=$(echo $jiraComment | sed 's/"/\``/g')
           jiraComment=$(echo $jiraComment | sed "s/'/\\'/g")
 
-          jiraIds=$(echo $jiraIdsFromMessage | grep -Po $jiraIdRegex)
+          jiraIds=$(echo $jiraIdsFromMessage | grep -Po $jiraIdRegex | uniq)
 
           # Jira tickets loop
           for jiraId in ${jiraIds[@]}
@@ -131,7 +141,7 @@ do
             echo "Processing Jira : $jiraId"
 
   	        # Uncomment to debug
-            echo "debug begin comment :"
+            #echo "debug begin comment :"
             #echo
   	    echo "jiracom=$jiraComment" #>> /var/log/gitlab/post_hook.log
 	    #echo "jiraurl=$jiraBeginUrl" #>> /var/log/gitlab/post_hook.log
@@ -142,7 +152,7 @@ do
   	        #echo "debug end"
 
   	        # All errors will be ignored (/dev/null)
-              curl -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": \"$jiraComment\"}" \
+              curl --retry 2 --retry-max-time 5 -D- -u $jiraLogin:$jiraPassword -X POST --data "{\"body\": \"$jiraComment\"}" \
                 -H "Content-Type: application/json" $jiraBeginUrl/$jiraId/$jiraEndUrl > /dev/null 2>&1
             echo "New Jira comment added"
           done
